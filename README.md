@@ -1,73 +1,134 @@
-Elasticsearch Analysis Kuromoji IPADic Neologd
-=======================
+# What is this?
+- Official ES kuromoji plugin uses ipadic, which is quite outdated.
+- https://github.com/codelibs/elasticsearch-analysis-kuromoji-ipadic-neologd is the elasticsearch plugin to add neologd on top of kuromoji, but unfortunately, it does not work for ES7.
+- This repo re-packages https://github.com/codelibs/elasticsearch-analysis-kuromoji-ipadic-neologd so that it works in ES7.
 
-## Overview
+# lucene-analyzers-kuromoji-ipadic-neologd-8.11.1-20200910
+- As ES analyzer is just a wrapper on top of lucene analyzer, we need to work with lucene-analyzers-kuromoji to add additional vocabulary.
+- Fortunately, someone has this [repo](https://github.com/kazuhira-r/kuromoji-with-mecab-neologd-buildscript) to download everything, extract, prune from dictionary source and package it to a jar file (./lucene-analyzers-kuromoji-ipadic-neologd-8.11.1-20200910)
 
-Elasticsearch Analysis Neologd Plugin provides Tokenizer/CharFilter/TokenFilter for Kuromoji with Neologd.
 
-## Version
+# packge this ES plugin
+- Now the lucene analyzer is available as a local jar file, we can use this to package an elasticsearch plugin
 
-[Versions in Maven Repository](http://central.maven.org/maven2/org/codelibs/elasticsearch-analysis-kuromoji-ipadic-neologd/)
-[Old(<= 6.5.1) Repository](http://central.maven.org/maven2/org/codelibs/elasticsearch-analysis-kuromoji-neologd/)
+```
+mvn install:install-file -Dfile=./lucene-analyzers-kuromoji-ipadic-neologd-8.11.1-20200910.jar -DgroupId=org.codelibs -DartifactId=lucene-analyzers-kuromoji-ipadic-neologd -Dversion=8.11.1-20200910 -Dpackaging=jar
 
-### Issues/Questions
+mvn package
+```
 
-Please file an [issue](https://github.com/codelibs/elasticsearch-analysis-kuromoji-ipadic-neologd/issues "issue").
-(Japanese forum is [here](https://github.com/codelibs/codelibs-ja-forum "here").)
+- The plugin should be then available at ./target/releases/elasticsearch-analysis-kuromoji-ipadic-neologd-7.17.1-SNAPSHOT.zip
 
-## Installation
+# Install ES plugin
+- I am working with a ES cluster within docker image, here is the instruction
+```
+docker ps # get container id, eg. e435db2b9247
+docker cp /<dir>/elasticsearch-analysis-kuromoji-ipadic-neologd/target/releases/elasticsearch-analysis-kuromoji-ipadic-neologd-7.17.1-SNAPSHOT.zip e435db2b9247:/usr/share/elasticsearch/
 
-    $ $ES_HOME/bin/elasticsearch-plugin install org.codelibs:elasticsearch-analysis-kuromoji-ipadic-neologd:7.1.0
+>>> docker cli, install plugin
+sh-5.0# ./bin/elasticsearch-plugin install file:///usr/share/elasticsearch/elasticsearch-analysis-kuromoji-ipadic-neologd-7.17.1-SNAPSHOT.zip
+sh-5.0# ./bin/elasticsearch-plugin list # list  plugins, analysis-kuromoji-ipadic-neologd should show up.
+analysis-icu
+analysis-kuromoji
+analysis-kuromoji-ipadic-neologd
+>>>>>>>>>>>>>>>>>>>>>>>
 
-## References
+# restart ES by restarting docker 
+docker stop e435db2b9247
+docker start e435db2b9247
+```
 
-### Analyzer, Tokenizer, TokenFilter, CharFilter
+# Test plugin
 
-The plugin includes these analyzer and tokenizer, tokenfilter.
+## Test Katakana with official Kuromoji plugin
+Noop ipadic is not enough
+```
+GET _analyze
+{
+  "analyzer": "kuromoji",
+  "text": ["キャメルトランスポート"]
+}
 
-| name                                             | type        |
-|:-------------------------------------------------|:-----------:|
-| kuromoji\_ipadic\_neologd\_iteration\_mark       | charfilter  |
-| kuromoji\_ipadic\_neologd                        | analyzer    |
-| kuromoji\_ipadic\_neologd\_tokenizer             | tokenizer   |
-| kuromoji\_ipadic\_neologd\_baseform              | tokenfilter |
-| kuromoji\_ipadic\_neologd\_part\_of\_speech      | tokenfilter |
-| kuromoji\_ipadic\_neologd\_readingform           | tokenfilter |
-| kuromoji\_ipadic\_neologd\_stemmer               | tokenfilter |
+>>>>>
+{
+  "tokens" : [
+    {
+      "token" : "キャメルトランスポート",
+      "start_offset" : 0,
+      "end_offset" : 11,
+      "type" : "word",
+      "position" : 0
+    }
+  ]
+}
+```
 
-### Usage
+## Test Katakana with kuromoji_ipadic_neologd plugin
+```
+PUT index-00001
+{
+  "settings": {
+    "index": {
+      "analysis": {
+        "tokenizer": {
+          "kuromoji_ipadic_neologd_search_mode": {
+                "type": "kuromoji_ipadic_neologd_tokenizer",
+                "mode": "search"
+              }
+        },
+        "analyzer": {
+          "kuromoji_normalize": {                 
+            "char_filter": [
+              "icu_normalizer"                    
+            ],
+            "tokenizer": "kuromoji_ipadic_neologd_search_mode",
+            "filter": [
+              "kuromoji_ipadic_neologd_part_of_speech",
+              "cjk_width",
+              "ja_stop",
+              "kuromoji_ipadic_neologd_stemmer",
+              "lowercase"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
 
-See [Elasticsearch Kuromoji](https://github.com/elastic/elasticsearch-analysis-kuromoji "elasticsearch-analysis-kuromoji").
+POST /index-00001/_analyze
+{
+  "analyzer": "kuromoji_normalize",
+  "text": "キャメルトランスポート"
+}
 
-### Update Kuromoji Jar File
+>>>>>>>>>>>>
 
-If you want to replace with the latest Lucene Neologd jar file, download it from https://maven.codelibs.org/org/codelibs/lucene-analyzers-kuromoji-ipadic-neologd/ and then replace old file in $ES_HOME/plugins/analysis-kuromoji-ipadic-neologd.
-
-### What is NEologd
-
-See [mecab-ipadic-NEologd](https://github.com/neologd/mecab-ipadic-neologd "mecab-ipadic-NEologd").
-
-## Use Lucene Kuromoji for Neologd
-
-If you want to use Lucene Kuromoji for Neologd in your application other than elasticsearch, you can use lucene-analyzers-kuromoji-ipadic-neologd jar file, not this plugin.
-To use the jar file, put the following settings into your pom.xml.
-
-    ...
-    <repositories>
-        <repository>
-            <id>codelibs.org</id>
-            <name>CodeLibs Repository</name>
-            <url>https://maven.codelibs.org/</url>
-        </repository>
-    </repositories>
-    ...
-    <dependencies>
-        <dependency>
-            <groupId>org.codelibs</groupId>
-            <artifactId>lucene-analyzers-kuromoji-ipadic-neologd</artifactId>
-            <version>6.4.0-20180927</version>
-            <!-- https://maven.codelibs.org/org/codelibs/lucene-analyzers-kuromoji-ipadic-neologd/ --->
-        </dependency>
-    ...
-
-See [CodeLibs Maven Repository](https://maven.codelibs.org/org/codelibs/lucene-analyzers-kuromoji-ipadic-neologd/).
+{
+  "tokens" : [
+    {
+      "token" : "キャメル",
+      "start_offset" : 0,
+      "end_offset" : 4,
+      "type" : "word",
+      "position" : 0
+    },
+    {
+      "token" : "キャメルトランスポート",
+      "start_offset" : 0,
+      "end_offset" : 11,
+      "type" : "word",
+      "position" : 0,
+      "positionLength" : 2
+    },
+    {
+      "token" : "トランスポート",
+      "start_offset" : 4,
+      "end_offset" : 11,
+      "type" : "word",
+      "position" : 1
+    }
+  ]
+}
+```
+Yayy!! tokens!!!
