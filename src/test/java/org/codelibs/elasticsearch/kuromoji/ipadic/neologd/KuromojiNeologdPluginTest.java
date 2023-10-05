@@ -123,9 +123,9 @@ public class KuromojiNeologdPluginTest {
                 .endObject()//
                 .endObject()//
                 .endObject();
-        runner.createMapping(index, type, mappingBuilder);
+        runner.createMapping(index, mappingBuilder);
 
-        final IndexResponse indexResponse1 = runner.insert(index, type, "1", "{\"msg\":\"東京スカイツリー\", \"id\":\"1\"}");
+        final IndexResponse indexResponse1 = runner.insert(index, "1", "{\"msg\":\"東京スカイツリー\", \"id\":\"1\"}");
         assertEquals(RestStatus.CREATED, indexResponse1.status());
         runner.refresh();
 
@@ -152,7 +152,7 @@ public class KuromojiNeologdPluginTest {
 
     private void assertDocCount(int expected, final String index, final String type, final String field, final String value) {
         final SearchResponse searchResponse =
-                runner.search(index, type, QueryBuilders.matchPhraseQuery(field, value), null, 0, numOfDocs);
+                runner.search(index, QueryBuilders.matchPhraseQuery(field, value), null, 0, numOfDocs);
         assertEquals(expected, searchResponse.getHits().getTotalHits().value);
     }
 }
